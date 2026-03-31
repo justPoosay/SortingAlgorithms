@@ -12,7 +12,7 @@
 
 using namespace std;
 
-// Data Structures
+// --- Data Structures ---
 enum SortAlgo { BUBBLE, SELECTION, INSERTION };
 
 struct Bar {
@@ -38,7 +38,8 @@ struct Visualizer {
     int prevDropdownActive = 0;
 };
 
-// Logic Helpers
+// --- Logic Helpers ---
+
 void ResetSortState(Visualizer& v) {
     v.active = false;
     v.isFinished = false;
@@ -113,7 +114,7 @@ int main() {
         float dt = GetFrameTime();
         for (auto& bar : vis.bars) bar.currentX += (bar.targetX - bar.currentX) * 15.0f * dt;
 
-        // Sorting Logic
+        // --- Sorting Logic ---
         if (vis.active && !vis.isFinished) {
             vis.timer += dt * ((vis.displaySpeed / 25.0f) * 100);
             if (vis.timer >= 1.0f) {
@@ -146,7 +147,7 @@ int main() {
             }
         }
 
-        // Victory Sweep
+        // --- Victory Sweep ---
         if (vis.isFinished && vis.sweepIndex < (int)vis.bars.size() && vis.sweepIndex != -1) {
             vis.timer += dt * vis.displaySpeed * 20.0f;
             if (vis.timer >= 1.0f) {
@@ -178,14 +179,14 @@ int main() {
             GenerateArray(vis, sw / 2);
         }
 
-        // START/PAUSE/REPLAY button
+        // --- DYNAMIC START/PAUSE/REPLAY BUTTON ---
         const char* btnLabel = "START SORT";
         if (vis.isFinished) btnLabel = "REPLAY SORT";
         else if (vis.active) btnLabel = "PAUSE SORT";
 
         if (GuiButton({ 230, 20, 200, 40 }, btnLabel)) {
             if (vis.isFinished) {
-                ResetSortState(vis);
+                ResetSortState(vis); // Reset indices but keep same bars
                 vis.active = true;
             }
             else {
@@ -203,7 +204,7 @@ int main() {
         if (vis.dropdownActive != vis.prevDropdownActive) {
             vis.currentAlgo = (SortAlgo)vis.dropdownActive;
             vis.prevDropdownActive = vis.dropdownActive;
-            ResetSortState(vis);
+            ResetSortState(vis); // Switch algo without reshuffling
         }
 
         DrawRectangle((int)leftWidth, 0, (int)leftWidth, sh, { 30, 30, 30, 255 });
