@@ -38,6 +38,24 @@ struct Visualizer {
     int prevDropdownActive = 0;
 };
 
+// Sound Generation
+Sound GenerateBeep() {
+    Wave wave = { 0 };
+    wave.frameCount = 44100 * 0.03f; // 30ms beep
+    wave.sampleRate = 44100;
+    wave.sampleSize = 16;
+    wave.channels = 1;
+    wave.data = malloc(wave.frameCount * sizeof(short));
+    short* samples = (short*)wave.data;
+    for (int k = 0; k < wave.frameCount; k++) {
+        // Simple square wave
+        samples[k] = (k % 40 < 20) ? 3000 : -3000;
+    }
+    Sound snd = LoadSoundFromWave(wave);
+    free(wave.data);
+    return snd;
+}
+
 // Logic Helpers
 void ResetSortState(Visualizer& v) {
     v.active = false;
@@ -96,10 +114,13 @@ void DrawHighlightedCode(Font font, const char* code, int posX, int posY) {
 
 int main() {
     const int sw = 1280; const int sh = 720;
-    InitWindow(sw, sh, "Sorting Visualizer - Replay Mode");
-    InitAudioDevice(); SetTargetFPS(144);
+    InitWindow(sw, sh, "Sorting Visualizer - Audio Fixed");
+    InitAudioDevice();
+    SetTargetFPS(144);
 
     Font consolas = LoadFontEx("C:\\Windows\\Fonts\\consola.ttf", 32, 0, 250);
+    Sound beep = GenerateBeep();
+
     Visualizer vis;
     GenerateArray(vis, sw / 2);
 
@@ -113,32 +134,45 @@ int main() {
         float dt = GetFrameTime();
         for (auto& bar : vis.bars) bar.currentX += (bar.targetX - bar.currentX) * 15.0f * dt;
 
-        // Sorting Logic
+        // Sorting Logic with Audio
         if (vis.active && !vis.isFinished) {
             vis.timer += dt * ((vis.displaySpeed / 25.0f) * 100);
             if (vis.timer >= 1.0f) {
                 vis.timer = 0.0f;
+
                 if (vis.currentAlgo == BUBBLE && vis.i < (int)vis.bars.size()) {
                     if (vis.j < (int)vis.bars.size() - vis.i - 1) {
+                        PlaySound(beep); // comparison sound
                         if (vis.bars[vis.j].value > vis.bars[vis.j + 1].value) {
                             swap(vis.bars[vis.j], vis.bars[vis.j + 1]);
                             SyncPositions(vis, sw / 2);
                         }
                         vis.j++;
                     }
-                    else { vis.bars[vis.bars.size() - vis.i - 1].isConfirmedSorted = true; vis.j = 0; vis.i++; }
+                    else {
+                        vis.bars[vis.bars.size() - vis.i - 1].isConfirmedSorted = true;
+                        vis.j = 0; vis.i++;
+                    }
                 }
                 else if (vis.currentAlgo == SELECTION && vis.i < (int)vis.bars.size() - 1) {
+                    PlaySound(beep); // swap sound
                     int m = vis.i;
-                    for (int k = vis.i + 1; k < (int)vis.bars.size(); k++) if (vis.bars[k].value < vis.bars[m].value) m = k;
+                    for (int k = vis.i + 1; k < (int)vis.bars.size(); k++) {
+                        if (vis.bars[k].value < vis.bars[m].value) m = k;
+                    }
                     swap(vis.bars[m], vis.bars[vis.i]);
                     vis.bars[vis.i].isConfirmedSorted = true;
                     SyncPositions(vis, sw / 2); vis.i++;
                 }
                 else if (vis.currentAlgo == INSERTION && vis.i < (int)vis.bars.size()) {
+                    PlaySound(beep); // shift sound
                     Bar key = vis.bars[vis.i]; int k = vis.i - 1;
-                    while (k >= 0 && vis.bars[k].value > key.value) { vis.bars[k + 1] = vis.bars[k]; k--; }
-                    vis.bars[k + 1] = key; SyncPositions(vis, sw / 2);
+                    while (k >= 0 && vis.bars[k].value > key.value) {
+                        vis.bars[k + 1] = vis.bars[k];
+                        k--;
+                    }
+                    vis.bars[k + 1] = key;
+                    SyncPositions(vis, sw / 2);
                     for (int idx = 0; idx <= vis.i; idx++) vis.bars[idx].isConfirmedSorted = true;
                     vis.i++;
                 }
@@ -146,11 +180,12 @@ int main() {
             }
         }
 
-        // Victory Sweep
+        // Victory Sweep Audio
         if (vis.isFinished && vis.sweepIndex < (int)vis.bars.size() && vis.sweepIndex != -1) {
             vis.timer += dt * vis.displaySpeed * 20.0f;
             if (vis.timer >= 1.0f) {
                 vis.timer = 0.0f;
+                PlaySound(beep); // sweep sound
                 vis.bars[vis.sweepIndex].isVictoryGreen = true;
                 vis.sweepIndex++;
             }
@@ -159,8 +194,9 @@ int main() {
         BeginDrawing();
         ClearBackground({ 30, 30, 30, 255 });
         float leftWidth = sw / 2.0f;
-        DrawRectangle(0, 0, (int)leftWidth, sh, { 15, 15, 15, 255 });
 
+        // Bar chart
+        DrawRectangle(0, 0, (int)leftWidth, sh, { 15, 15, 15, 255 });
         float barW = leftWidth / vis.bars.size();
         for (int k = 0; k < (int)vis.bars.size(); k++) {
             float h = ((float)vis.bars[k].value / 500.0f) * (sh - 300);
@@ -171,26 +207,14 @@ int main() {
             DrawRectangleRec({ vis.bars[k].currentX, sh - h, barW - 1, h }, c);
         }
 
+        // Controls
         DrawRectangle(0, 0, (int)leftWidth, 240, { 45, 45, 48, 255 });
+        if (GuiButton({ 20, 20, 200, 40 }, "GENERATE NEW")) { vis.n = (int)sliderN; GenerateArray(vis, sw / 2); }
 
-        if (GuiButton({ 20, 20, 200, 40 }, "GENERATE NEW")) {
-            vis.n = (int)sliderN;
-            GenerateArray(vis, sw / 2);
-        }
-
-        // START/PAUSE/REPLAY button
-        const char* btnLabel = "START SORT";
-        if (vis.isFinished) btnLabel = "REPLAY SORT";
-        else if (vis.active) btnLabel = "PAUSE SORT";
-
+        const char* btnLabel = vis.isFinished ? "REPLAY SORT" : (vis.active ? "PAUSE SORT" : "START SORT");
         if (GuiButton({ 230, 20, 200, 40 }, btnLabel)) {
-            if (vis.isFinished) {
-                ResetSortState(vis);
-                vis.active = true;
-            }
-            else {
-                vis.active = !vis.active;
-            }
+            if (vis.isFinished) { ResetSortState(vis); vis.active = true; }
+            else { vis.active = !vis.active; }
         }
 
         GuiSlider({ 80, 80, 300, 30 }, "SIZE", TextFormat("%d", (int)sliderN), &sliderN, 10, 300);
@@ -206,6 +230,7 @@ int main() {
             ResetSortState(vis);
         }
 
+        // Source code
         DrawRectangle((int)leftWidth, 0, (int)leftWidth, sh, { 30, 30, 30, 255 });
         DrawTextEx(consolas, "SOURCE CODE PREVIEW", { leftWidth + 20, 20 }, 24, 2, GOLD);
         DrawLine((int)leftWidth + 20, 50, sw - 20, 50, DARKGRAY);
@@ -215,6 +240,9 @@ int main() {
         EndDrawing();
     }
     UnloadFont(consolas);
-    CloseAudioDevice(); CloseWindow();
+    UnloadSound(beep);
+    CloseAudioDevice();
+    CloseWindow();
+
     return 0;
 }
